@@ -9,8 +9,8 @@ import { ValidationError } from "@/common/errors/app-error";
 const updateSchema = z.object({
   idempotencyKey: z.string().min(8),
   caseId: z.string().min(1),
-  goals: z.unknown(),
-  interventions: z.unknown()
+  goals: z.record(z.unknown()),
+  interventions: z.record(z.unknown())
 });
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ homeId: string }> }) {

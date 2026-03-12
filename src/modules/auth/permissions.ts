@@ -3,10 +3,25 @@ import { CurrentUser } from "@/common/types/auth";
 
 const rolePermissionMap: Record<string, string[]> = {
   administrator: ["*"],
-  finance: ["expense:create", "expense:approve", "donor:manage", "payroll:approve"],
-  caregiver: ["child:read", "attendance:write", "caretask:write", "incident:create"],
-  case_manager: ["case:manage", "incident:review", "child:read"],
-  auditor: ["audit:read", "report:read", "compliance:read"]
+  finance: [
+    "expense:create",
+    "expense:approve",
+    "donor:manage",
+    "payroll:approve",
+    "purchase:manage",
+    "report:read",
+    "notification:send"
+  ],
+  caregiver: [
+    "child:read",
+    "attendance:write",
+    "caretask:write",
+    "meal:write",
+    "medication:write",
+    "incident:create"
+  ],
+  case_manager: ["case:manage", "incident:review", "child:read", "document:verify", "notification:send"],
+  auditor: ["audit:read", "audit:write", "report:read", "compliance:read"]
 };
 
 export function requirePermission(homeId: string, permission: string, user: CurrentUser) {

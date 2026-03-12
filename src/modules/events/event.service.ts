@@ -23,7 +23,7 @@ type EventInput = {
     | "AUDIT_COMPLETED"
     | "DOCUMENT_VERIFIED"
     | "EXCEPTION_DETECTED";
-  payload: Prisma.JsonValue;
+  payload: Prisma.InputJsonValue;
   actorUserId?: string;
   idempotencyKey: string;
 };

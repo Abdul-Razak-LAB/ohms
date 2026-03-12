@@ -8,6 +8,7 @@ const envSchema = z.object({
   SESSION_COOKIE_NAME: z.string().min(1),
 
   R2_ACCOUNT_ID: z.string().optional(),
+  R2_ENDPOINT: z.string().url().optional(),
   R2_ACCESS_KEY_ID: z.string().optional(),
   R2_SECRET_ACCESS_KEY: z.string().optional(),
   R2_BUCKET: z.string().optional(),
@@ -21,6 +22,7 @@ const envSchema = z.object({
   UPSTASH_QSTASH_TOKEN: z.string().optional(),
 
   PAYMENT_PROVIDER: z.string().default("mock"),
+  PAYMENT_WEBHOOK_ALGO: z.enum(["sha256"]).default("sha256"),
   PAYMENT_WEBHOOK_SECRET: z.string().optional(),
 
   VAPID_PUBLIC_KEY: z.string().optional(),
@@ -49,7 +51,7 @@ function hasAll(keys: Array<keyof typeof env>) {
 }
 
 const optionalGroups: Record<string, Array<keyof typeof env>> = {
-  r2: ["R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"],
+  r2: ["R2_ACCOUNT_ID", "R2_ENDPOINT", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET"],
   resend: ["RESEND_API_KEY", "RESEND_FROM"],
   redis: ["UPSTASH_REDIS_REST_URL", "UPSTASH_REDIS_REST_TOKEN"],
   qstash: ["UPSTASH_QSTASH_TOKEN"],
@@ -68,5 +70,9 @@ if (env.NODE_ENV === "production") {
   const missing = requiredInProd.filter((key) => !env[key]);
   if (missing.length > 0) {
     throw new Error(`Missing required production environment variables: ${missing.join(", ")}`);
+  }
+
+  if (env.PAYMENT_PROVIDER !== "mock" && !env.PAYMENT_WEBHOOK_SECRET) {
+    throw new Error("Missing PAYMENT_WEBHOOK_SECRET for non-mock payment provider");
   }
 }

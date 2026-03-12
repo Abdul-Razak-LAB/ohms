@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { fail } from "@/common/api/envelope";
 import { AppError } from "@/common/errors/app-error";
 import { logger } from "@/platform/observability/logger";
+import * as Sentry from "@sentry/nextjs";
 
 export async function withApiHandler<T>(fn: () => Promise<T>) {
   try {
@@ -10,6 +11,9 @@ export async function withApiHandler<T>(fn: () => Promise<T>) {
   } catch (error) {
     const body = fail(error);
     const status = error instanceof AppError ? error.status : 500;
+    if (!(error instanceof AppError) || status >= 500) {
+      Sentry.captureException(error);
+    }
     logger.error({ err: error, code: body.error.code }, "API handler failure");
     return NextResponse.json(body, { status });
   }

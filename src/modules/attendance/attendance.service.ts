@@ -34,7 +34,7 @@ export async function markAttendance(input: MarkAttendanceInput, ctx: RequestCon
         aggregateType: "attendance",
         aggregateId: record.id,
         eventType: "ATTENDANCE_MARKED",
-        payload: { childId: input.childId, date: input.date, status: input.status },
+        payload: { childId: input.childId, date: input.date.toISOString(), status: input.status },
         actorUserId: ctx.user.id,
         idempotencyKey: `event_${input.idempotencyKey}`
       }).catch(() => undefined);

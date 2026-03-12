@@ -19,3 +19,22 @@ export async function generateTransparencyReport(
     }
   });
 }
+
+export async function getOperationalOverview(ctx: RequestContext) {
+  requirePermission(ctx.homeId, "report:read", ctx.user);
+
+  const [children, openIncidents, queuedNotifications, pendingPayroll] = await Promise.all([
+    prisma.child.count({ where: { homeId: ctx.homeId, status: "active" } }),
+    prisma.incident.count({ where: { homeId: ctx.homeId, status: "open" } }),
+    prisma.notification.count({ where: { homeId: ctx.homeId, status: "queued" } }),
+    prisma.payrollRun.count({ where: { homeId: ctx.homeId, status: "pending_approval" } })
+  ]);
+
+  return {
+    children,
+    openIncidents,
+    queuedNotifications,
+    pendingPayroll,
+    generatedAt: new Date().toISOString()
+  };
+}
