@@ -1,0 +1,782 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum HomeRole {
+  administrator
+  finance
+  caregiver
+  case_manager
+  auditor
+}
+
+enum EventType {
+  CHILD_REGISTERED
+  ATTENDANCE_MARKED
+  CARE_TASK_COMPLETED
+  MEAL_LOGGED
+  MEDICATION_ADMINISTERED
+  INCIDENT_REPORTED
+  INCIDENT_ESCALATED
+  CASE_PLAN_UPDATED
+  EXPENSE_REQUESTED
+  EXPENSE_APPROVED
+  DONOR_ALLOCATION_APPLIED
+  PO_CREATED
+  PO_DELIVERED
+  PAYROLL_RUN_CREATED
+  AUDIT_COMPLETED
+  DOCUMENT_VERIFIED
+  EXCEPTION_DETECTED
+}
+
+enum RecordStatus {
+  active
+  archived
+  deleted
+}
+
+model User {
+  id           String           @id @default(cuid())
+  email        String           @unique
+  fullName     String
+  passwordHash String
+  memberships  HomeMembership[]
+  sessions     Session[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Home {
+  id           String           @id @default(cuid())
+  code         String           @unique
+  name         String
+  timezone     String
+  memberships  HomeMembership[]
+  children     Child[]
+  events       Event[]
+  attachments  Attachment[]
+  incidents    Incident[]
+  cases        Case[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model HomeMembership {
+  id        String   @id @default(cuid())
+  homeId    String
+  userId    String
+  role      HomeRole
+  isActive  Boolean  @default(true)
+  home      Home     @relation(fields: [homeId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([homeId, userId])
+  @@index([userId, role])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  ip        String?
+  userAgent String?
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@index([userId, expiresAt])
+}
+
+model Child {
+  id          String         @id @default(cuid())
+  homeId      String
+  externalRef String?
+  firstName   String
+  lastName    String
+  dob         DateTime?
+  status      RecordStatus   @default(active)
+  deletedAt   DateTime?
+  legalHold   Boolean        @default(false)
+  home        Home           @relation(fields: [homeId], references: [id], onDelete: Restrict)
+  profile     ChildProfile?
+  guardians   ChildGuardian[]
+  documents   ChildDocument[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@unique([homeId, externalRef])
+  @@index([homeId, status, createdAt])
+}
+
+model ChildProfile {
+  id           String   @id @default(cuid())
+  childId       String   @unique
+  bloodGroup    String?
+  allergies     Json?
+  specialNeeds  Json?
+  riskFlags     Json?
+  child         Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+  updatedAt     DateTime @updatedAt
+}
+
+model ChildGuardian {
+  id           String   @id @default(cuid())
+  childId       String
+  relationship  String
+  fullName      String
+  phone         String?
+  address       String?
+  isPrimary     Boolean  @default(false)
+  child         Child    @relation(fields: [childId], references: [id], onDelete: Cascade)
+
+  @@index([childId, isPrimary])
+}
+
+model ChildDocument {
+  id           String   @id @default(cuid())
+  homeId       String
+  childId      String
+  attachmentId String
+  docType      String
+  verifiedAt   DateTime?
+  verifiedBy   String?
+  child        Child      @relation(fields: [childId], references: [id], onDelete: Cascade)
+  attachment   Attachment @relation(fields: [attachmentId], references: [id], onDelete: Restrict)
+
+  @@index([homeId, childId, docType])
+}
+
+model AttendanceLog {
+  id             String   @id @default(cuid())
+  homeId         String
+  childId        String
+  date           DateTime
+  status         String
+  markedBy       String
+  idempotencyKey String
+  createdAt      DateTime @default(now())
+
+  @@unique([homeId, idempotencyKey])
+  @@unique([homeId, childId, date])
+  @@index([homeId, date])
+}
+
+model TaskTemplate {
+  id             String   @id @default(cuid())
+  homeId         String
+  title          String
+  checklistItems TaskChecklistItem[]
+
+  @@index([homeId, title])
+}
+
+model TaskChecklistItem {
+  id         String       @id @default(cuid())
+  templateId String
+  label      String
+  required   Boolean      @default(true)
+  template   TaskTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model CareTask {
+  id             String   @id @default(cuid())
+  homeId         String
+  childId        String
+  templateId     String?
+  title          String
+  dueAt          DateTime
+  completedAt    DateTime?
+  completedBy    String?
+  idempotencyKey String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, dueAt, completedAt])
+}
+
+model MealPlan {
+  id        String   @id @default(cuid())
+  homeId    String
+  childId   String?
+  startDate DateTime
+  endDate   DateTime
+  plan      Json
+
+  @@index([homeId, startDate, endDate])
+}
+
+model MealLog {
+  id             String   @id @default(cuid())
+  homeId         String
+  childId        String
+  mealAt         DateTime
+  details        Json
+  idempotencyKey String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, childId, mealAt])
+}
+
+model NutritionFlag {
+  id         String   @id @default(cuid())
+  homeId     String
+  childId    String
+  severity   String
+  note       String
+  createdAt  DateTime @default(now())
+  resolvedAt DateTime?
+
+  @@index([homeId, childId, severity, resolvedAt])
+}
+
+model MedicationPlan {
+  id         String   @id @default(cuid())
+  homeId     String
+  childId    String
+  medication String
+  dosage     String
+  frequency  String
+  startDate  DateTime
+  endDate    DateTime?
+
+  @@index([homeId, childId, startDate])
+}
+
+model MedicationLog {
+  id               String   @id @default(cuid())
+  homeId           String
+  childId          String
+  medicationPlanId String?
+  administeredAt   DateTime
+  administeredBy   String
+  idempotencyKey   String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, childId, administeredAt])
+}
+
+model Appointment {
+  id          String   @id @default(cuid())
+  homeId      String
+  childId     String
+  kind        String
+  scheduledAt DateTime
+  status      String
+  notes       String?
+
+  @@index([homeId, scheduledAt, status])
+}
+
+model Case {
+  id        String         @id @default(cuid())
+  homeId    String
+  childId   String
+  status    String
+  openedAt  DateTime       @default(now())
+  closedAt  DateTime?
+  home      Home           @relation(fields: [homeId], references: [id], onDelete: Restrict)
+
+  @@index([homeId, childId, status])
+}
+
+model CaseAssessment {
+  id         String   @id @default(cuid())
+  caseId      String
+  summary     String
+  riskScore   Int
+  assessedBy  String
+  assessedAt  DateTime @default(now())
+
+  @@index([caseId, assessedAt])
+}
+
+model CasePlan {
+  id            String   @id @default(cuid())
+  caseId         String
+  goals          Json
+  interventions  Json
+  updatedBy      String
+  updatedAt      DateTime @updatedAt
+
+  @@index([caseId, updatedAt])
+}
+
+model CaseFollowup {
+  id         String   @id @default(cuid())
+  caseId      String
+  followupAt  DateTime
+  notes       String
+  byUserId    String
+
+  @@index([caseId, followupAt])
+}
+
+model Incident {
+  id             String   @id @default(cuid())
+  homeId         String
+  childId        String?
+  severity       String
+  category       String
+  status         String
+  reportedBy     String
+  reportedAt     DateTime @default(now())
+  idempotencyKey String
+  home           Home     @relation(fields: [homeId], references: [id], onDelete: Restrict)
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, severity, status, reportedAt])
+}
+
+model IncidentAction {
+  id         String   @id @default(cuid())
+  incidentId String
+  actionType String
+  note       String
+  byUserId   String
+  at         DateTime @default(now())
+
+  @@index([incidentId, at])
+}
+
+model IncidentEscalation {
+  id          String   @id @default(cuid())
+  incidentId  String
+  level       String
+  targetRole  String
+  dueAt       DateTime
+  escalatedAt DateTime @default(now())
+  resolvedAt  DateTime?
+
+  @@index([incidentId, dueAt, resolvedAt])
+}
+
+model SafeguardingReview {
+  id         String   @id @default(cuid())
+  incidentId String
+  reviewerId String
+  outcome    String
+  reviewedAt DateTime @default(now())
+
+  @@index([incidentId, reviewedAt])
+}
+
+model Attachment {
+  id             String   @id @default(cuid())
+  homeId         String
+  kind           String
+  bucket         String
+  objectKey      String
+  contentType    String
+  sizeBytes      Int
+  checksumSha256 String
+  gps            Json?
+  deviceInfo     Json?
+  metadata       Json?
+  createdAt      DateTime @default(now())
+  home           Home     @relation(fields: [homeId], references: [id], onDelete: Restrict)
+  childDocuments ChildDocument[]
+
+  @@unique([bucket, objectKey])
+  @@index([homeId, kind, createdAt])
+}
+
+model Event {
+  id             String    @id @default(cuid())
+  homeId         String
+  aggregateType  String
+  aggregateId    String
+  eventType      EventType
+  payload        Json
+  actorUserId    String?
+  idempotencyKey String
+  prevHash       String?
+  hash           String
+  createdAt      DateTime  @default(now())
+  home           Home      @relation(fields: [homeId], references: [id], onDelete: Restrict)
+
+  @@unique([homeId, idempotencyKey])
+  @@unique([homeId, hash])
+  @@index([homeId, createdAt])
+  @@index([homeId, aggregateType, aggregateId, createdAt])
+}
+
+model BudgetCycle {
+  id        String   @id @default(cuid())
+  homeId    String
+  name      String
+  startDate DateTime
+  endDate   DateTime
+  status    String
+
+  @@unique([homeId, name])
+  @@index([homeId, status, startDate])
+}
+
+model BudgetLine {
+  id             String @id @default(cuid())
+  cycleId        String
+  category       String
+  allocatedCents Int
+  spentCents     Int    @default(0)
+
+  @@unique([cycleId, category])
+  @@index([cycleId, category])
+}
+
+model ExpenseRequest {
+  id             String   @id @default(cuid())
+  homeId         String
+  budgetLineId   String?
+  amountCents    Int
+  currency       String
+  purpose        String
+  status         String
+  requestedBy    String
+  requestedAt    DateTime @default(now())
+  idempotencyKey String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, status, requestedAt])
+}
+
+model Approval {
+  id         String   @id @default(cuid())
+  homeId     String
+  entityType String
+  entityId   String
+  stage      String
+  decision   String
+  decidedBy  String
+  decidedAt  DateTime?
+  comment    String?
+
+  @@index([homeId, entityType, entityId, stage])
+}
+
+model Donor {
+  id           String @id @default(cuid())
+  homeId       String
+  name         String
+  email        String?
+  restrictions Json?
+
+  @@index([homeId, name])
+}
+
+model Donation {
+  id             String   @id @default(cuid())
+  homeId         String
+  donorId        String
+  amountCents    Int
+  currency       String
+  receivedAt     DateTime
+  restricted     Boolean  @default(false)
+  restrictionRef String?
+
+  @@index([homeId, donorId, receivedAt])
+}
+
+model DonorAllocation {
+  id             String   @id @default(cuid())
+  homeId         String
+  donationId     String
+  targetType     String
+  targetId       String
+  allocatedCents Int
+  createdAt      DateTime @default(now())
+  idempotencyKey String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, donationId])
+}
+
+model FundUtilizationEntry {
+  id               String   @id @default(cuid())
+  homeId           String
+  allocationId     String
+  expenseRequestId String?
+  amountCents      Int
+  utilizedAt       DateTime @default(now())
+
+  @@index([homeId, allocationId, utilizedAt])
+}
+
+model Vendor {
+  id       String @id @default(cuid())
+  homeId   String
+  name     String
+  category String?
+  status   String
+
+  @@unique([homeId, name])
+  @@index([homeId, status])
+}
+
+model PurchaseRequest {
+  id             String @id @default(cuid())
+  homeId         String
+  requestedBy    String
+  status         String
+  reason         String
+  idempotencyKey String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, status])
+}
+
+model PurchaseOrder {
+  id             String   @id @default(cuid())
+  homeId         String
+  requestId      String?
+  vendorId       String
+  status         String
+  orderedAt      DateTime @default(now())
+  idempotencyKey String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, vendorId, status])
+}
+
+model PoItem {
+  id              String @id @default(cuid())
+  purchaseOrderId String
+  sku             String?
+  description     String
+  qty             Int
+  unitPriceCents  Int
+
+  @@index([purchaseOrderId])
+}
+
+model DeliveryReceipt {
+  id              String   @id @default(cuid())
+  homeId          String
+  purchaseOrderId String
+  receivedAt      DateTime
+  receivedBy      String
+  variance        Json?
+  idempotencyKey  String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, receivedAt])
+}
+
+model Reconciliation {
+  id          String   @id @default(cuid())
+  homeId      String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      String
+  result      Json
+
+  @@index([homeId, periodStart, periodEnd, status])
+}
+
+model VendorPerformanceMetric {
+  id          String   @id @default(cuid())
+  homeId      String
+  vendorId    String
+  periodStart DateTime
+  periodEnd   DateTime
+  onTimeScore Float
+  qualityScore Float
+
+  @@unique([homeId, vendorId, periodStart, periodEnd])
+}
+
+model PayrollRun {
+  id             String   @id @default(cuid())
+  homeId         String
+  periodStart    DateTime
+  periodEnd      DateTime
+  status         String
+  totalCents     Int      @default(0)
+  idempotencyKey String
+
+  @@unique([homeId, idempotencyKey])
+  @@index([homeId, status, periodStart])
+}
+
+model PayrollEntry {
+  id              String @id @default(cuid())
+  payrollRunId    String
+  userId          String
+  grossCents      Int
+  deductionsCents Int
+  netCents        Int
+
+  @@unique([payrollRunId, userId])
+}
+
+model PayrollApproval {
+  id          String   @id @default(cuid())
+  payrollRunId String
+  approverId   String
+  decision     String
+  decidedAt    DateTime?
+
+  @@index([payrollRunId, decision])
+}
+
+model PayrollPayment {
+  id           String   @id @default(cuid())
+  homeId       String
+  payrollRunId String
+  gateway      String
+  gatewayRef   String?
+  status       String
+  paidAt       DateTime?
+
+  @@index([homeId, payrollRunId, status])
+}
+
+model AuditTemplate {
+  id        String @id @default(cuid())
+  homeId    String
+  name      String
+  checklist Json
+
+  @@unique([homeId, name])
+}
+
+model Audit {
+  id          String   @id @default(cuid())
+  homeId      String
+  templateId  String
+  periodStart DateTime
+  periodEnd   DateTime
+  status      String
+
+  @@index([homeId, status, periodStart])
+}
+
+model AuditResult {
+  id          String   @id @default(cuid())
+  auditId     String
+  score       Float
+  findings    Json
+  completedAt DateTime?
+
+  @@index([auditId, completedAt])
+}
+
+model ComplianceCheck {
+  id       String   @id @default(cuid())
+  homeId   String
+  control  String
+  status   String
+  checkedAt DateTime @default(now())
+  evidence Json?
+
+  @@index([homeId, control, checkedAt])
+}
+
+model Report {
+  id          String   @id @default(cuid())
+  homeId      String
+  kind        String
+  periodStart DateTime
+  periodEnd   DateTime
+  generatedAt DateTime @default(now())
+
+  @@index([homeId, kind, generatedAt])
+}
+
+model ReportExport {
+  id           String @id @default(cuid())
+  reportId     String
+  attachmentId String
+  format       String
+  generatedBy  String
+
+  @@index([reportId, format])
+}
+
+model ReportAccessLog {
+  id         String   @id @default(cuid())
+  reportId   String
+  accessedBy String
+  accessedAt DateTime @default(now())
+  purpose    String?
+
+  @@index([reportId, accessedAt])
+}
+
+model Device {
+  id         String   @id @default(cuid())
+  homeId     String
+  userId     String
+  deviceUid  String
+  lastSeenAt DateTime?
+
+  @@unique([homeId, deviceUid])
+  @@index([homeId, userId])
+}
+
+model SyncCursor {
+  id        String   @id @default(cuid())
+  homeId    String
+  deviceId  String
+  cursor    String
+  updatedAt DateTime @updatedAt
+
+  @@unique([homeId, deviceId])
+}
+
+model OutboxReceipt {
+  id            String   @id @default(cuid())
+  homeId        String
+  deviceId      String
+  clientEventId String
+  entityType    String
+  entityId      String?
+  processedAt   DateTime @default(now())
+  resultCode    String
+
+  @@unique([homeId, deviceId, clientEventId])
+  @@index([homeId, processedAt, resultCode])
+}
+
+model Notification {
+  id          String   @id @default(cuid())
+  homeId      String
+  channel     String
+  template    String
+  payload     Json
+  scheduledAt DateTime?
+  status      String
+
+  @@index([homeId, channel, status, scheduledAt])
+}
+
+model NotificationSubscription {
+  id         String  @id @default(cuid())
+  homeId     String
+  userId     String
+  channel    String
+  endpoint   String
+  p256dh     String?
+  authSecret String?
+  isActive   Boolean @default(true)
+
+  @@index([homeId, userId, channel, isActive])
+}
+
+model NotificationDelivery {
+  id              String   @id @default(cuid())
+  notificationId  String
+  subscriptionId  String?
+  status          String
+  attempts        Int      @default(0)
+  deliveredAt     DateTime?
+  lastError       String?
+
+  @@index([notificationId, status])
+}
